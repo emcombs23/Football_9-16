@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Football Plays Scatter Plot</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 40px; }
+    #plot { border: 1px solid #ccc; background: #fafafa; }
+    label { font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h1>Packers Plays Scatter Plot</h1>
+  <label for="week-select">Select Week:</label>
+  <select id="week-select"></select>
+  <br><br>
+  <canvas id="plot" width="800" height="500"></canvas>
+  <div id="player-info" style="margin-top:20px;"></div>
+  <script>
+    let plays = [];
+    let weeks = [];
+    const colors = { PASS: '#0074D9', RUSH: '#FF4136' };
+
+    // Load plays.json
+    fetch('plays.json')
+      .then(response => response.text())
+      .then(text => {
+        plays = text.trim().split('\n').map(line => JSON.parse(line));
+        weeks = [...new Set(plays.map(p => p.week))].sort((a, b) => a - b);
+        populateWeekDropdown();
+        drawPlot(weeks[0]);
+      });
+
+    function populateWeekDropdown() {
+      const select = document.getElementById('week-select');
+      weeks.forEach(week => {
+        const option = document.createElement('option');
+        option.value = week;
+        option.textContent = week;
+        select.appendChild(option);
+      });
+      select.addEventListener('change', e => drawPlot(e.target.value));
+    }
+
+    function drawPlot(selectedWeek) {
+      const canvas = document.getElementById('plot');
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      // Axes
+      ctx.strokeStyle = '#333';
+  // Draw axes so that (0,0) is at bottom left
+  ctx.beginPath();
+  // Y axis: from top to bottom
+  ctx.moveTo(70, 30); ctx.lineTo(70, 460);
+  // X axis: at y=0 yards_gained
+  const yZero = scale(0, -10, 100, 460, 30);
+  ctx.moveTo(70, yZero); ctx.lineTo(770, yZero); // X axis at 0 yards_gained
+  ctx.stroke();
+      ctx.font = '14px Arial';
+  // X axis label
+  ctx.fillText('game_time', 400, 490);
+  // Y axis label
+  ctx.save();
+  ctx.translate(30, 250);
+  ctx.rotate(-Math.PI/2);
+  ctx.fillText('yards_gained', 0, 0);
+  ctx.restore();
+      // X axis ticks and labels (0 to 60)
+      for (let xTick = 0; xTick <= 60; xTick += 10) {
+        let x = scale(xTick, 0, 60, 70, 770);
+        ctx.beginPath();
+        ctx.moveTo(x, yZero);
+        ctx.lineTo(x, yZero + 5);
+        ctx.stroke();
+        ctx.fillText(xTick, x - 10, yZero + 20);
+      }
+      // Y axis ticks and labels (-10 to 100)
+      for (let yTick = -10; yTick <= 100; yTick += 10) {
+        let y = scale(yTick, -10, 100, 460, 30);
+        ctx.beginPath();
+        ctx.moveTo(65, y);
+        ctx.lineTo(70, y);
+        ctx.stroke();
+        ctx.fillText(yTick, 30, y + 5);
+      }
+      // Filter data
+      const data = plays.filter(p => p.week == selectedWeek);
+      if (data.length === 0) return;
+      // Store point positions for click detection
+      window.pointPositions = [];
+      data.forEach((p, i) => {
+        const x = scale(p.game_time, 0, 60, 70, 770);
+        const y = scale(p.yards_gained, -10, 100, 460, 30);
+        ctx.beginPath();
+        ctx.arc(x, y, 6, 0, 2 * Math.PI);
+        ctx.fillStyle = colors[p.play_type_nfl] || '#888';
+        ctx.globalAlpha = 0.8;
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
+        window.pointPositions[i] = {x, y, data: p};
+      });
+      // Add click event for canvas
+      canvas.onclick = function(e) {
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+        let found = null;
+        for (let pt of window.pointPositions) {
+          const dx = pt.x - mouseX;
+          const dy = pt.y - mouseY;
+          if (dx*dx + dy*dy < 36) { // within radius 6
+            found = pt.data;
+            break;
+          }
+        }
+        const infoDiv = document.getElementById('player-info');
+        if (found) {
+          infoDiv.innerHTML = `<img src="${found.headshot_url}" alt="headshot" style="height:100px;"><br>
+            <b>Player:</b> ${found.player_name}<br>
+            <b>Yards Gained:</b> ${found.yards_gained}`;
+        } else {
+          infoDiv.innerHTML = '';
+        }
+      };
+      // Legend
+      ctx.fillStyle = colors.PASS;
+      ctx.fillRect(650, 30, 20, 20);
+      ctx.fillStyle = '#000';
+      ctx.fillText('PASS', 675, 45);
+      ctx.fillStyle = colors.RUSH;
+      ctx.fillRect(650, 60, 20, 20);
+      ctx.fillStyle = '#000';
+      ctx.fillText('RUSH', 675, 75);
+    }
+
+    function scale(val, min, max, outMin, outMax) {
+      if (max === min) return (outMin + outMax) / 2;
+      return outMin + (outMax - outMin) * (val - min) / (max - min);
+    }
+  </script>
+</body>
+</html>
